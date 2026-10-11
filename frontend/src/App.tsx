@@ -5,6 +5,8 @@ import Dashboard from "./components/Dashboard"
 
 import { PreferencesProvider } from "./contexts/PreferencesContext"
 
+import { ErrorBoundary } from "./components/ErrorBoundary"
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem("access_token"))
   const [showCookieBanner, setShowCookieBanner] = useState(false)
@@ -31,12 +33,13 @@ function App() {
   }
 
   return (
-    <PreferencesProvider>
-      {isLoggedIn ? (
-        <Dashboard />
-      ) : (
-        <Auth onLoginSuccess={() => setIsLoggedIn(true)} />
-      )}
+    <ErrorBoundary fallbackTitle="OpusLex Encountered an Application Error">
+      <PreferencesProvider>
+        {isLoggedIn ? (
+          <Dashboard />
+        ) : (
+          <Auth onLoginSuccess={() => setIsLoggedIn(true)} />
+        )}
       
       {showCookieBanner && !showCookieModal && (
         <div className="fixed bottom-6 right-6 z-[200] max-w-md rounded-xl border border-neutral-200 bg-white p-5 shadow-2xl flex flex-col gap-4">
@@ -113,7 +116,8 @@ function App() {
           </div>
         </div>
       )}
-    </PreferencesProvider>
+      </PreferencesProvider>
+    </ErrorBoundary>
   )
 }
 

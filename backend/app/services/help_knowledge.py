@@ -143,18 +143,40 @@ def find_relevant_product_knowledge(query: str) -> list[dict]:
     words = set(re.findall(r"\b\w{3,}\b", cleaned))
     matches = []
 
+    # Stop words that should not trigger general topic matches on their own
+    generic_words = {"compliance", "legal", "what", "how", "can", "the", "and", "for", "with", "from", "about"}
+
+    has_report_mention = bool(re.search(r"\breports?\b", cleaned))
+
     for topic in KNOWLEDGE_TOPICS:
+        topic_id = topic.get("id")
         score = 0
+
+        # Topic-specific domain gating:
+        # A question without any mention of 'report' or 'reports' should not match the Reports topic
+        if topic_id == "reports" and not has_report_mention:
+            continue
+
         # Check explicit keywords
         for kw in topic["keywords"]:
-            if kw in cleaned:
-                score += 5
-            elif any(w in kw for w in words):
-                score += 1
-        
+            # Exact phrase match in query
+            if re.search(r"\b" + re.escape(kw) + r"\b", cleaned):
+                score += 8
+            else:
+                # Token match for multi-word phrases, excluding generic words
+                kw_tokens = [w for w in re.findall(r"\b\w{3,}\b", kw) if w not in generic_words]
+                if kw_tokens:
+                    matches_in_kw = sum(1 for w in kw_tokens if w in words)
+                    if matches_in_kw == len(kw_tokens):
+                        score += 6
+                    elif matches_in_kw > 0 and len(kw_tokens) > 1:
+                        score += 2
+
         # Check topic title
-        if any(w in topic["title"].lower() for w in words):
-            score += 2
+        title_tokens = [w for w in re.findall(r"\b\w{3,}\b", topic["title"].lower()) if w not in generic_words]
+        for w in title_tokens:
+            if re.search(r"\b" + re.escape(w) + r"\b", cleaned):
+                score += 3
 
         if score > 0:
             matches.append((score, topic))
@@ -216,9 +238,22 @@ def generate_knowledge_answer(query: str) -> str:
             "Could you clarify which part of OpusLex you would like help with (for example: Policies, Reports, Investigations, Documents, or AI Agents)?"
         )
 
-    # If user asked a multi-part question (e.g. upload documents AND analyze them)
-    if len(relevant) >= 2:
+    cleaned = query.strip().lower()
+    # Check if the query genuinely asks a multi-topic question
+    is_multi_topic = bool(
+        re.search(
+            r"\b(and|as well as|both|also|along with|versus|vs|difference between)\b",
+            cleaned,
+        )
+    )
+
+    # Combine topics only when genuinely requested and when distinct topics exist
+    if is_multi_topic and len(relevant) >= 2:
         top_two = relevant[:2]
+        # Never append Reports to Agents unless 'report' was explicitly requested
+        if top_two[0]["id"] == "agents" and top_two[1]["id"] == "reports" and "report" not in cleaned:
+            return top_two[0]["summary"]
+
         return (
             f"### {top_two[0]['title']}\n{top_two[0]['summary']}\n\n"
             f"### {top_two[1]['title']}\n{top_two[1]['summary']}"

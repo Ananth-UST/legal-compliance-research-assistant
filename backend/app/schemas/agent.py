@@ -80,7 +80,7 @@ class AgentFinding(BaseModel):
     This maps 1-to-1 to the populated fields of AgentRun.
     """
 
-    finding: str
+    finding: str | None = None
     evidence: list[AgentEvidence] = []
     conflicts: list[AgentConflict] = []
     evidence_gaps: list[AgentEvidenceGap] = []

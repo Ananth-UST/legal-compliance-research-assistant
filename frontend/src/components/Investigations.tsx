@@ -19,6 +19,7 @@ import {
     Sparkles,
     Users,
 } from "lucide-react"
+import { normalizeApiError, safeString } from "../utils/errorUtils"
 
 type Document = {
     id: number
@@ -88,12 +89,55 @@ type CommentData = {
     created_at: string
 }
 
-type AgentEvidence = { document_id: number; document_title: string; filename: string; text_snippet: string }
-type AgentConflict = { description: string; conflicting_documents: string[] }
-type AgentEvidenceGap = { missing_information: string; impact_on_investigation: string }
-type AgentRequirement = { requirement: string; source_document: string }
-type AgentAction = { action: string; reason: string }
-type AgentCitation = { document_id: number; chunk: number; text: string }
+type AgentEvidence = {
+    claim?: string
+    source_document?: string
+    source_section_or_chunk?: string
+    supporting_text?: string
+    // Legacy fallbacks:
+    document_id?: number
+    document_title?: string
+    filename?: string
+    text_snippet?: string
+}
+
+type AgentConflict = {
+    description?: string
+    documents?: string[]
+    relationship?: string
+    // Legacy fallback:
+    conflicting_documents?: string[]
+}
+
+type AgentEvidenceGap = {
+    description?: string
+    why_it_matters?: string
+    // Legacy fallback:
+    missing_information?: string
+    impact_on_investigation?: string
+}
+
+type AgentRequirement = {
+    requirement?: string
+    source_document?: string
+    source_section_or_chunk?: string
+}
+
+type AgentAction = {
+    action?: string
+    rationale?: string
+    // Legacy fallback:
+    reason?: string
+}
+
+type AgentCitation = {
+    source_document?: string
+    source_section_or_chunk?: string
+    // Legacy fallback:
+    document_id?: number
+    chunk?: number
+    text?: string
+}
 
 type AgentRunResponse = {
     id: number
@@ -169,6 +213,8 @@ function Investigations() {
     const [agentQuestion, setAgentQuestion] = useState("")
     const [agentLoading, setAgentLoading] = useState(false)
     const [agentRuns, setAgentRuns] = useState<AgentRunResponse[]>([])
+    const [loadingAgentRuns, setLoadingAgentRuns] = useState(false)
+    const [agentRunsError, setAgentRunsError] = useState("")
     const [agentError, setAgentError] = useState("")
     const [expandedAgentRunId, setExpandedAgentRunId] = useState<number | null>(null)
 
@@ -277,7 +323,7 @@ function Investigations() {
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => null)
-                throw new Error(errData?.detail || "Failed to run agent")
+                throw new Error(normalizeApiError(errData, "Failed to run agent"))
             }
 
             const data: AgentRunResponse = await response.json()
@@ -285,7 +331,7 @@ function Investigations() {
             setAgentQuestion("")
             setExpandedAgentRunId(data.id)
         } catch (err: any) {
-            setAgentError(err.message)
+            setAgentError(err.message || "Failed to run agent")
         } finally {
             setAgentLoading(false)
         }
@@ -651,8 +697,57 @@ function Investigations() {
             }
         }
 
+        const loadAgentRuns = async () => {
+            if (!selectedInvestigation) {
+                setAgentRuns([])
+                setLoadingAgentRuns(false)
+                return
+            }
+
+            const token = localStorage.getItem("access_token")
+            if (!token) {
+                setAgentRuns([])
+                setLoadingAgentRuns(false)
+                return
+            }
+
+            setLoadingAgentRuns(true)
+            setAgentRunsError("")
+
+            try {
+                const response = await fetch(
+                    `http://127.0.0.1:8000/api/v1/agents/runs?investigation_id=${selectedInvestigation.id}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                )
+
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => null)
+                    setAgentRunsError(normalizeApiError(errData, "Failed to load agent history"))
+                    setAgentRuns([])
+                    return
+                }
+
+                const data = await response.json()
+                if (Array.isArray(data)) {
+                    setAgentRuns(data)
+                } else {
+                    setAgentRuns([])
+                }
+            } catch (err: any) {
+                setAgentRunsError(err.message || "Network error loading agent history")
+                setAgentRuns([])
+            } finally {
+                setLoadingAgentRuns(false)
+            }
+        }
+
         loadResearchHistory()
         loadComments()
+        loadAgentRuns()
     }, [selectedInvestigation])
 
     const createInvestigation = async () => {
@@ -1335,15 +1430,15 @@ function Investigations() {
             const ragData = await ragResponse.json()
 
             if (!ragResponse.ok) {
-                setAnswer(
-                    ragData.detail ||
-                    ragData.error ||
+                const normalizedErr = normalizeApiError(
+                    ragData.detail || ragData.error,
                     "Unable to get an investigation answer"
                 )
+                setAnswer(normalizedErr)
                 return
             }
 
-            const generatedAnswer = ragData.answer || ""
+            const generatedAnswer = typeof ragData.answer === "string" ? ragData.answer : safeString(ragData.answer)
 
             setAnswer(generatedAnswer)
             setSources(ragData.sources || [])
@@ -2116,7 +2211,7 @@ function Investigations() {
                                 </div>
 
                                 <div className="mt-3 space-y-2 text-xs leading-5 text-neutral-600">
-                                    {answer.split("\n").map((line, index) => (
+                                    {safeString(answer).split("\n").map((line, index) => (
                                         <p key={index}>
                                             {line || "\u00A0"}
                                         </p>
@@ -2608,6 +2703,18 @@ function Investigations() {
                             </div>
                         )}
 
+                        {loadingAgentRuns && (
+                            <div className="mt-4 rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-4 text-center">
+                                <p className="text-xs text-neutral-400 animate-pulse">Loading previous agent runs...</p>
+                            </div>
+                        )}
+
+                        {agentRunsError && (
+                            <div className="mt-3 rounded-lg border border-red-100 bg-red-50 p-2 text-xs text-red-600">
+                                {agentRunsError}
+                            </div>
+                        )}
+
                         {agentRuns.length > 0 && (
                             <div className="mt-6">
                                 <div className="mb-3 flex items-center justify-between">
@@ -2639,26 +2746,45 @@ function Investigations() {
 
                                             {expandedAgentRunId === run.id && (
                                                 <div className="p-4 space-y-5">
-                                                    <div>
-                                                        <h4 className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">Finding</h4>
-                                                        <div className="border-t border-neutral-100 pt-2">
-                                                            <p className="text-xs leading-5 text-neutral-700 whitespace-pre-wrap">{run.finding}</p>
+                                                    {run.finding && (
+                                                        !/do not include (an? )?executive summary|without (an? )?executive summary|no executive summary/i.test(run.question || "") ||
+                                                        /limitation|insufficient|cannot answer|not establish/i.test(run.finding) ||
+                                                        (run.conflicts.length === 0 && run.evidence.length === 0 && run.applicable_requirements.length === 0)
+                                                    ) && (
+                                                        <div>
+                                                            <h4 className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">
+                                                                {/limitation|insufficient|cannot answer|not establish/i.test(run.finding) ? "Evidence Limitation" : "Finding"}
+                                                            </h4>
+                                                            <div className="border-t border-neutral-100 pt-2">
+                                                                <p className="text-xs leading-5 text-neutral-700 whitespace-pre-wrap">{run.finding}</p>
+                                                            </div>
                                                         </div>
-                                                    </div>
+                                                    )}
 
                                                     {run.evidence && run.evidence.length > 0 && (
                                                         <div>
                                                             <h4 className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">Evidence</h4>
                                                             <div className="grid gap-2 border-t border-neutral-100 pt-2">
-                                                                {run.evidence.map((ev, i) => (
-                                                                    <div key={i} className="rounded-lg border border-neutral-100 bg-neutral-50 p-2.5">
-                                                                        <div className="flex items-center gap-2 mb-1.5">
-                                                                            <FileText size={11} className="text-neutral-400" />
-                                                                            <span className="text-xs font-medium text-neutral-700 truncate">{ev.document_title}</span>
+                                                                {run.evidence.map((ev, i) => {
+                                                                    const title = ev.claim || ev.document_title || ev.source_document || "Evidence Item";
+                                                                    const text = ev.supporting_text || ev.text_snippet || "";
+                                                                    const source = ev.source_document || ev.filename || "";
+                                                                    const section = ev.source_section_or_chunk || "";
+                                                                    return (
+                                                                        <div key={i} className="rounded-lg border border-neutral-100 bg-neutral-50 p-2.5">
+                                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                                <FileText size={11} className="text-neutral-400" />
+                                                                                <span className="text-xs font-medium text-neutral-700 truncate">{safeString(title)}</span>
+                                                                            </div>
+                                                                            {text && <p className="text-xs text-neutral-600 italic">"{safeString(text)}"</p>}
+                                                                            {(source || section) && (
+                                                                                <p className="mt-1 text-[11px] text-neutral-400">
+                                                                                    {source}{section ? ` • ${section}` : ""}
+                                                                                </p>
+                                                                            )}
                                                                         </div>
-                                                                        <p className="text-xs text-neutral-600 italic">"{ev.text_snippet}"</p>
-                                                                    </div>
-                                                                ))}
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     )}
@@ -2671,8 +2797,13 @@ function Investigations() {
                                                                     <div key={i} className="flex gap-2">
                                                                         <CheckCircle2 size={12} className="text-neutral-500 shrink-0 mt-0.5" />
                                                                         <div>
-                                                                            <p className="text-xs text-neutral-700">{req.requirement}</p>
-                                                                            <p className="text-xs text-neutral-400">Source: {req.source_document}</p>
+                                                                            <p className="text-xs text-neutral-700">{safeString(req.requirement)}</p>
+                                                                            {req.source_document && (
+                                                                                <p className="text-xs text-neutral-400">
+                                                                                    Source: {safeString(req.source_document)}
+                                                                                    {req.source_section_or_chunk ? ` • ${req.source_section_or_chunk}` : ""}
+                                                                                </p>
+                                                                            )}
                                                                         </div>
                                                                     </div>
                                                                 ))}
@@ -2685,16 +2816,19 @@ function Investigations() {
                                                             <h4 className="text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">Citations</h4>
                                                             <div className="grid gap-2 border-t border-neutral-100 pt-2">
                                                                 {run.citations.map((cit, i) => {
-                                                                    const docTitle = run.evidence?.find((e) => e.document_id === cit.document_id)?.document_title || `Document ID ${cit.document_id}`
+                                                                    const doc = cit.source_document || (cit.document_id ? `Document ID ${cit.document_id}` : "Citation");
+                                                                    const section = cit.source_section_or_chunk || (cit.chunk !== undefined ? `Chunk ${cit.chunk}` : "");
                                                                     return (
                                                                         <div key={i} className="rounded-lg border border-neutral-100 bg-neutral-50 p-2.5">
-                                                                            <div className="flex items-center gap-2 mb-1.5">
+                                                                            <div className="flex items-center gap-2 mb-1">
                                                                                 <FileText size={11} className="text-neutral-400" />
-                                                                                <span className="text-xs font-medium text-neutral-700 truncate">{docTitle} (Chunk {cit.chunk})</span>
+                                                                                <span className="text-xs font-medium text-neutral-700 truncate">
+                                                                                    {safeString(doc)}{section ? ` (${section})` : ""}
+                                                                                </span>
                                                                             </div>
-                                                                            <p className="text-xs text-neutral-600 italic">"{cit.text}"</p>
+                                                                            {cit.text && <p className="text-xs text-neutral-600 italic">"{safeString(cit.text)}"</p>}
                                                                         </div>
-                                                                    )
+                                                                    );
                                                                 })}
                                                             </div>
                                                         </div>
@@ -2704,17 +2838,23 @@ function Investigations() {
                                                         <div>
                                                             <h4 className="text-xs uppercase tracking-wider text-red-400 font-semibold mb-2">Conflicts</h4>
                                                             <div className="space-y-2 border-t border-red-100 pt-2">
-                                                                {run.conflicts.map((conf, i) => (
-                                                                    <div key={i} className="rounded-lg border border-red-100 bg-red-50 p-2.5">
-                                                                        <div className="flex items-start gap-2">
-                                                                            <ShieldAlert size={12} className="text-red-500 shrink-0 mt-0.5" />
-                                                                            <div>
-                                                                                <p className="text-xs text-red-700 font-medium">{conf.description}</p>
-                                                                                <p className="mt-1 text-xs text-red-500">Between: {conf.conflicting_documents.join(" and ")}</p>
+                                                                {run.conflicts.map((conf, i) => {
+                                                                    const docs = conf.documents || conf.conflicting_documents || [];
+                                                                    return (
+                                                                        <div key={i} className="rounded-lg border border-red-100 bg-red-50 p-2.5">
+                                                                            <div className="flex items-start gap-2">
+                                                                                <ShieldAlert size={12} className="text-red-500 shrink-0 mt-0.5" />
+                                                                                <div>
+                                                                                    <p className="text-xs text-red-700 font-medium">{safeString(conf.description)}</p>
+                                                                                    {conf.relationship && <p className="text-xs text-red-600">{safeString(conf.relationship)}</p>}
+                                                                                    {Array.isArray(docs) && docs.length > 0 && (
+                                                                                        <p className="mt-1 text-xs text-red-500">Between: {docs.map((d) => safeString(d)).join(" and ")}</p>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
-                                                                    </div>
-                                                                ))}
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
                                                     )}
@@ -2725,8 +2865,8 @@ function Investigations() {
                                                             <div className="space-y-2 border-t border-amber-100 pt-2">
                                                                 {run.evidence_gaps.map((gap, i) => (
                                                                     <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-                                                                        <p className="text-xs text-amber-800 font-medium">Missing: {gap.missing_information}</p>
-                                                                        <p className="mt-1 text-xs text-amber-700">Impact: {gap.impact_on_investigation}</p>
+                                                                        <p className="text-xs text-amber-800 font-medium">{safeString(gap.description || gap.missing_information)}</p>
+                                                                        <p className="mt-1 text-xs text-amber-700">Why it matters: {safeString(gap.why_it_matters || gap.impact_on_investigation)}</p>
                                                                     </div>
                                                                 ))}
                                                             </div>
@@ -2741,8 +2881,8 @@ function Investigations() {
                                                                     <div key={i} className="rounded-lg border border-neutral-200 bg-white p-2.5 flex items-start gap-2">
                                                                         <Activity size={12} className="text-neutral-500 shrink-0 mt-0.5" />
                                                                         <div>
-                                                                            <p className="text-xs font-medium text-neutral-800">{act.action}</p>
-                                                                            <p className="text-xs text-neutral-500">{act.reason}</p>
+                                                                            <p className="text-xs font-medium text-neutral-800">{safeString(act.action)}</p>
+                                                                            <p className="text-xs text-neutral-500">{safeString(act.rationale || act.reason)}</p>
                                                                         </div>
                                                                     </div>
                                                                 ))}

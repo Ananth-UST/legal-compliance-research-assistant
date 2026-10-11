@@ -281,10 +281,12 @@ export default function Agents() {
                 <div className="flex-1 overflow-y-auto p-6">
                     {selectedRun ? (
                         <div className="space-y-6 max-w-3xl mx-auto pb-12">
-                            <div className="mb-8">
-                                <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-widest mb-2">Query</h3>
-                                <p className="text-lg font-medium text-neutral-900 leading-relaxed">{selectedRun.question}</p>
-                            </div>
+                            {selectedRun.question && !/no (query( echo)?|echo)|do not (include|echo) (the )?query|only conflict/i.test(selectedRun.question) && (
+                                <div className="mb-8">
+                                    <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-widest mb-2">Query</h3>
+                                    <p className="text-lg font-medium text-neutral-900 leading-relaxed">{selectedRun.question}</p>
+                                </div>
+                            )}
                             
                             {selectedRun.status === "failed" ? (
                                 <div className="bg-red-50 text-red-700 p-4 rounded-xl border border-red-100 flex gap-3">
@@ -302,8 +304,18 @@ export default function Agents() {
                             ) : (
                                 <>
                                     {selectedRun.finding && (
+                                        !/do not include (an? )?executive summary|without (an? )?executive summary|no executive summary|only conflict/i.test(selectedRun.question || "") ||
+                                        /limitation|insufficient|cannot answer|not establish/i.test(selectedRun.finding) ||
+                                        (selectedRun.conflicts.length === 0 && selectedRun.evidence.length === 0 && selectedRun.applicable_requirements.length === 0)
+                                    ) && (
                                         <div className="prose prose-sm prose-neutral max-w-none">
-                                            <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-widest mb-3">Executive Summary</h3>
+                                            <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-widest mb-3">
+                                                {/limitation|insufficient|cannot answer|not establish/i.test(selectedRun.finding)
+                                                    ? "Evidence Limitation"
+                                                    : /executive summary/i.test(selectedRun.question || "")
+                                                    ? "Executive Summary"
+                                                    : "Finding"}
+                                            </h3>
                                             <div className="bg-neutral-50 rounded-xl p-5 border border-neutral-100 leading-relaxed text-sm whitespace-pre-wrap">
                                                 {selectedRun.finding}
                                             </div>
@@ -413,7 +425,24 @@ export default function Agents() {
                                         </div>
                                     )}
                                     
-                                    {selectedRun.status === "completed" && (!selectedRun.evidence?.length && !selectedRun.finding) && (
+                                    {selectedRun.citations && selectedRun.citations.length > 0 && (
+                                        <div>
+                                            <h3 className="text-sm font-medium text-neutral-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                <BookOpen size={14} /> Citations
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {selectedRun.citations.map((cit, i) => (
+                                                    <div key={i} className="flex items-center gap-2 text-xs text-neutral-600 bg-neutral-50 rounded-lg p-2.5 border border-neutral-100">
+                                                        <BookOpen size={12} className="text-neutral-400 shrink-0" />
+                                                        <span className="font-medium text-neutral-800">{cit.source_document}</span>
+                                                        {cit.source_section_or_chunk && <span>• {cit.source_section_or_chunk}</span>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedRun.status === "completed" && (!selectedRun.evidence?.length && !selectedRun.finding && !selectedRun.conflicts?.length) && (
                                         <div className="bg-amber-50 text-amber-800 p-6 rounded-xl border border-amber-200 text-center">
                                             <AlertTriangle size={24} className="mx-auto mb-2 opacity-50" />
                                             <h4 className="text-sm font-medium mb-1">Insufficient Evidence</h4>

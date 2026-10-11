@@ -54,12 +54,23 @@ export default function Help() {
             })
 
             if (!res.ok) {
-                if (res.status === 404) {
-                    throw new Error("Ask OpusLex is currently unavailable.")
+                const errData = await res.json().catch(() => null)
+                if (res.status === 504) {
+                    throw new Error("Help AI request timed out. Please try asking again or check the documentation topics.")
                 }
-                throw new Error("Failed to get answer.")
+                if (res.status === 503) {
+                    throw new Error(errData?.detail || "Help AI is temporarily unavailable. Please refer to the Help topics.")
+                }
+                if (res.status === 404) {
+                    throw new Error("Ask OpusLex endpoint is currently unavailable.")
+                }
+                const msg = errData?.detail ? (typeof errData.detail === "string" ? errData.detail : JSON.stringify(errData.detail)) : "Failed to get answer."
+                throw new Error(msg)
             }
             const data = await res.json()
+            if (!data.answer || !data.answer.trim()) {
+                throw new Error("No answer was returned by the assistant. Please rephrase your question.")
+            }
             setAnswer(data.answer)
         } catch (err: any) {
             setErrorAsk(err.message || "An error occurred.")

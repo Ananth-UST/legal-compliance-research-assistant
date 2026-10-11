@@ -199,3 +199,31 @@ frontend/test_video.js
 # Local recovery copies
 backend_backup/
 recovery-backend/
+
+# Local databases — never publish
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+
+# Local backups and recovery material
+backend/backups/
+recovery_key.txt
+offline_recovery.key
+*recovery_key*
+*recovery-key*
+
+# Local diagnostic and scratch artifacts
+all_eof_scripts.txt
+replaces.txt
+test_backup.txt
+/test_*.py
+/backend/test_*.py
+backend/mcp_test_inspect.py
+backend/pyrefly.toml
+backend/package.json
+backend/package-lock.json
+update_env.py
+update_script.py
+

@@ -10,6 +10,7 @@ import {
     Trash2,
     X,
 } from "lucide-react"
+import { normalizeApiError, safeString } from "../utils/errorUtils"
 
 const API = "http://127.0.0.1:8000"
 
@@ -479,12 +480,13 @@ function Research() {
             const data = await response.json()
 
             if (!response.ok) {
-                setAnswer(data.detail || data.error || "Unable to get an answer")
+                const normalizedErr = normalizeApiError(data.detail || data.error, "Unable to get an answer")
+                setAnswer(normalizedErr)
                 setRagLoading(false)
                 return
             }
 
-            setAnswer(data.answer || "")
+            setAnswer(typeof data.answer === "string" ? data.answer : safeString(data.answer))
             setSources(data.sources || [])
 
             // 2. Persist the session with status "Completed"
@@ -697,7 +699,7 @@ function Research() {
                         </div>
 
                         <div className="mt-4 space-y-2 text-sm leading-6 text-neutral-700">
-                            {answer.split("\n").map((line, index) => (
+                            {safeString(answer).split("\n").map((line, index) => (
                                 <p key={index}>{line || "\u00A0"}</p>
                             ))}
                         </div>
@@ -722,14 +724,14 @@ function Research() {
                                             <FileText size={14} className="shrink-0 text-neutral-500" />
                                             <div className="min-w-0 flex-1">
                                                 <p className="truncate text-xs font-medium">
-                                                    {source.document_title}
+                                                    {safeString(source.document_title, "Untitled Document")}
                                                 </p>
                                                 <p className="mt-0.5 text-xs text-neutral-400">
-                                                    {source.filename} · Chunk {source.chunk}
+                                                    {safeString(source.filename)} · Chunk {source.chunk}
                                                 </p>
                                             </div>
                                             <span className="text-xs text-neutral-400">
-                                                {source.distance.toFixed(3)}
+                                                {typeof source.distance === "number" ? source.distance.toFixed(3) : safeString(source.distance)}
                                             </span>
                                         </div>
                                     ))}

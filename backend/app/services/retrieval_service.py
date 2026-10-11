@@ -4,6 +4,11 @@ from sqlalchemy.orm import Session
 from app.services.embedding_service import generate_embedding
 
 
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
 DEFAULT_DISTANCE_THRESHOLD = 0.80
 
 
@@ -14,8 +19,13 @@ def search_similar_chunks(
     distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
     document_ids: list[int] | None = None,
     user_id: int | None = None,
+    query_embedding: list[float] | None = None,
 ):
-    query_embedding = generate_embedding(query)
+    start_time = time.perf_counter()
+    if query_embedding is None:
+        emb_start = time.perf_counter()
+        query_embedding = generate_embedding(query)
+        logger.info(f"[TIMING:embedding] generated in {(time.perf_counter() - emb_start)*1000:.2f}ms")
 
     # ---------------------------------------------------------
     # [DIAG] Log every input to this function

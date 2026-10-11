@@ -211,8 +211,11 @@ async def compare_documents(
         print(f"  {label} → id={doc['id']}  filename={doc['filename']!r}")
 
     # ──────────────────────────────────────────────────────────────
-    # RETRIEVAL — one independent call per document (unchanged)
+    # RETRIEVAL — one independent call per document
     # ──────────────────────────────────────────────────────────────
+    from app.services.embedding_service import generate_embedding
+    query_embedding = generate_embedding(question)
+
     per_doc_chunks: list[list] = []
     for doc in documents:
         chunks = search_similar_chunks(
@@ -220,6 +223,7 @@ async def compare_documents(
             query=question,
             limit=limit,
             document_ids=[doc["id"]],
+            query_embedding=query_embedding,
         )
         per_doc_chunks.append(chunks)
         label = _LABELS[len(per_doc_chunks) - 1]
@@ -481,6 +485,9 @@ def build_rag_context(
     document_ids: list[int] | None = None,
     user_id: int | None = None,
 ) -> tuple[str, list[dict]]:
+    from app.services.embedding_service import generate_embedding
+    query_embedding = generate_embedding(query)
+
     if document_ids is not None:
         results = []
         for doc_id in document_ids:
@@ -490,6 +497,7 @@ def build_rag_context(
                 limit=limit,
                 document_ids=[doc_id],
                 user_id=user_id,
+                query_embedding=query_embedding,
             )
             results.extend(doc_results)
         # Optional: Sort combined results by distance to prioritize most relevant overall
@@ -501,6 +509,7 @@ def build_rag_context(
             limit=limit,
             document_ids=document_ids,
             user_id=user_id,
+            query_embedding=query_embedding,
         )
 
     if not results:
