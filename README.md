@@ -47,3 +47,9 @@ OpusLex is a RAG-based AI Agent platform for legal and compliance professionals.
 
 ## Known Limitations
 - The Copilot connectivity layer requires a clean, authenticated environment to succeed. Tests that hit the Copilot API may fail locally if the environment lacks proper authentication.
+
+## Credits
+- **Original Project**: Created by [arunshrinivaas](https://github.com/arunshrinivaas)
+- **Current Maintainer**: [Ananth-UST](https://github.com/Ananth-UST)
+
+This is a fork/continuation of the original OpusLex project. Special thanks to the original author for the foundation and architecture.
