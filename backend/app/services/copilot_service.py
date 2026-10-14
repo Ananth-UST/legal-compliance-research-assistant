@@ -8,18 +8,30 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-client = CopilotClient()
+client = None
+try:
+    client = CopilotClient()
+except Exception as e:
+    logger.warning(f"Failed to initialize CopilotClient: {e}. LLM features will be unavailable.")
 
 _client_started = False
 client_lock = asyncio.Lock()
 
 
 async def get_client():
-    global _client_started
+    global _client_started, client
+    if client is None:
+        logger.warning("CopilotClient not available. LLM features disabled.")
+        return None
     async with client_lock:
         if not _client_started:
-            await client.start()
-            _client_started = True
+            try:
+                await client.start()
+                _client_started = True
+            except Exception as e:
+                logger.warning(f"Failed to start CopilotClient: {e}")
+                client = None
+                return None
     return client
 
 
